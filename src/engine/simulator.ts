@@ -628,7 +628,9 @@ export function suggestTStop(net: Netlist): number {
     if (isFinite(t) && t > 0) cands.push(t * 2);
   }
   if (!cands.length) return 1e-3;
-  const t = Math.max(...cands);
+  let t = Math.max(...cands);
+  // 주기 전원이 있으면 최대 20주기로 제한 (큰 커패시터의 긴 충전 시간은 생략)
+  if (periods.length) t = Math.min(t, Math.max(...periods) * 20);
   // 보기 좋은 값으로 반올림 (1, 2, 5 × 10^n)
   const e = Math.pow(10, Math.floor(Math.log10(t)));
   for (const m of [1, 2, 5, 10]) if (t <= m * e) return m * e;
