@@ -13,6 +13,9 @@ describe('SI 단위 파싱/표기', () => {
     expect(parseSI('100 nF')).toBeCloseTo(1e-7);
     expect(parseSI('5V')).toBe(5);
     expect(parseSI('abc')).toBeNull();
+    expect(parseSI('4k7')).toBeCloseTo(4700);
+    expect(parseSI('2R2')).toBeCloseTo(2.2);
+    expect(parseSI('1M5')).toBeCloseTo(1.5e6);
   });
   it('보기 좋게 표기한다', () => {
     expect(formatSI(0.0025, 'A')).toBe('2.5 mA');

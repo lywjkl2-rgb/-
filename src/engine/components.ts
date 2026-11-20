@@ -48,12 +48,12 @@ const vertical = (a: string, b: string): PinDef[] => [
 
 export const COMPONENTS: Record<CompType, CompDef> = {
   R: {
-    type: 'R', label: '저항', prefix: 'R', pins: two('1', '2'), category: '수동 소자', shortcut: 'r',
+    type: 'R', label: '저항', prefix: 'R', pins: two('1', '2'), category: '수동 소자', shortcut: '1',
     defaults: { resistance: 1000 },
     schema: [{ key: 'resistance', label: '저항값', kind: 'number', unit: 'Ω' }],
   },
   C: {
-    type: 'C', label: '커패시터', prefix: 'C', pins: two('+', '−'), category: '수동 소자', shortcut: 'c',
+    type: 'C', label: '커패시터', prefix: 'C', pins: two('+', '−'), category: '수동 소자', shortcut: '2',
     defaults: { capacitance: 1e-6, ic: 0 },
     schema: [
       { key: 'capacitance', label: '정전용량', kind: 'number', unit: 'F' },
@@ -61,7 +61,7 @@ export const COMPONENTS: Record<CompType, CompDef> = {
     ],
   },
   L: {
-    type: 'L', label: '인덕터', prefix: 'L', pins: two('1', '2'), category: '수동 소자', shortcut: 'l',
+    type: 'L', label: '인덕터', prefix: 'L', pins: two('1', '2'), category: '수동 소자', shortcut: '3',
     defaults: { inductance: 1e-3, ic: 0 },
     schema: [
       { key: 'inductance', label: '인덕턴스', kind: 'number', unit: 'H' },
@@ -69,7 +69,7 @@ export const COMPONENTS: Record<CompType, CompDef> = {
     ],
   },
   V: {
-    type: 'V', label: '직류 전압원', prefix: 'V', pins: vertical('+', '−'), category: '전원', shortcut: 'v',
+    type: 'V', label: '직류 전압원', prefix: 'V', pins: vertical('+', '−'), category: '전원', shortcut: '4',
     defaults: { voltage: 5 },
     schema: [{ key: 'voltage', label: '전압', kind: 'number', unit: 'V' }],
   },
@@ -95,12 +95,12 @@ export const COMPONENTS: Record<CompType, CompDef> = {
   },
   I: {
     type: 'I', label: '직류 전류원', prefix: 'I', pins: [{ name: 'in', x: 0, y: 2 }, { name: 'out', x: 0, y: -2 }],
-    category: '전원', shortcut: 'i',
+    category: '전원', shortcut: '5',
     defaults: { current: 1e-3 },
     schema: [{ key: 'current', label: '전류 (화살표 방향)', kind: 'number', unit: 'A' }],
   },
   D: {
-    type: 'D', label: '다이오드', prefix: 'D', pins: two('A', 'K'), category: '반도체', shortcut: 'd',
+    type: 'D', label: '다이오드', prefix: 'D', pins: two('A', 'K'), category: '반도체', shortcut: '6',
     defaults: { model: 'si' },
     schema: [{
       key: 'model', label: '모델', kind: 'select', options: [
@@ -129,7 +129,7 @@ export const COMPONENTS: Record<CompType, CompDef> = {
     schema: [{ key: 'vz', label: '제너 전압', kind: 'number', unit: 'V' }],
   },
   SW: {
-    type: 'SW', label: '스위치', prefix: 'S', pins: two('1', '2'), category: '스위치·계측', shortcut: 's',
+    type: 'SW', label: '스위치', prefix: 'S', pins: two('1', '2'), category: '스위치·계측', shortcut: '9',
     defaults: { closed: true, toggleTime: '' },
     schema: [
       { key: 'closed', label: '초기 상태: 닫힘', kind: 'boolean' },
@@ -139,7 +139,7 @@ export const COMPONENTS: Record<CompType, CompDef> = {
   NPN: {
     type: 'NPN', label: 'NPN 트랜지스터', prefix: 'Q',
     pins: [{ name: 'B', x: -2, y: 0 }, { name: 'C', x: 1, y: -2 }, { name: 'E', x: 1, y: 2 }],
-    category: '반도체', shortcut: 'q',
+    category: '반도체', shortcut: '7',
     defaults: { beta: 100 },
     schema: [{ key: 'beta', label: '전류 증폭률 β', kind: 'number' }],
   },
@@ -153,7 +153,7 @@ export const COMPONENTS: Record<CompType, CompDef> = {
   OPAMP: {
     type: 'OPAMP', label: '연산 증폭기', prefix: 'U',
     pins: [{ name: '−', x: -3, y: -1 }, { name: '+', x: -3, y: 1 }, { name: 'out', x: 3, y: 0 }],
-    category: '능동 소자', shortcut: 'o',
+    category: '능동 소자', shortcut: '8',
     defaults: { gain: 1e5, vsat: 15 },
     schema: [
       { key: 'gain', label: '개루프 이득 A', kind: 'number' },
@@ -169,7 +169,7 @@ export const COMPONENTS: Record<CompType, CompDef> = {
     defaults: {}, schema: [],
   },
   GND: {
-    type: 'GND', label: '접지', prefix: 'GND', pins: [{ name: 'g', x: 0, y: 0 }], category: '연결', shortcut: 'g',
+    type: 'GND', label: '접지', prefix: 'GND', pins: [{ name: 'g', x: 0, y: 0 }], category: '연결', shortcut: '0',
     defaults: {}, schema: [],
   },
   LABEL: {
@@ -228,6 +228,13 @@ const SI_PREFIX: Record<string, number> = {
 /** "4.7k", "10u", "2.2MΩ", "100 nF", "1meg" 같은 문자열을 숫자로 */
 export function parseSI(text: string): number | null {
   const s = text.trim().replace(/,/g, '');
+  // RKM 표기: 4k7 = 4.7k, 2R2 = 2.2, 1M5 = 1.5M, 4u7 = 4.7µ
+  const rkm = s.match(/^(\d+)([RrkKMmuµμnp])(\d+)\s*([a-zA-ZΩΩ]*)$/);
+  if (rkm) {
+    const base = parseFloat(`${rkm[1]}.${rkm[3]}`);
+    const p = rkm[2] === 'R' || rkm[2] === 'r' ? 1 : SI_PREFIX[rkm[2]];
+    return base * p;
+  }
   const m = s.match(/^([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*(meg|MEG|Meg|[TGMkKmuµμnpf])?\s*([a-zA-ZΩΩ°%]*)$/);
   if (!m) return null;
   let v = parseFloat(m[1]);
@@ -246,7 +253,8 @@ export function formatSI(v: number, unit = '', digits = 3): string {
   const a = Math.abs(v);
   for (const [scale, p] of PREFIXES) {
     if (a >= scale * 0.9995) {
-      const s = (v / scale).toPrecision(digits);
+      const x = v / scale;
+      const s = Math.abs(x) >= Math.pow(10, digits) - 0.5 ? Math.round(x).toString() : x.toPrecision(digits);
       return `${trimZeros(s)} ${p}${unit}`.trim();
     }
   }

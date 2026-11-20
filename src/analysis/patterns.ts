@@ -143,7 +143,7 @@ export function findPatterns(net: Netlist, op: OpResult): Pattern[] {
       const roles: Pattern['roles'] = {};
       bridge.forEach(d => { roles[d.id] = { title: '브리지 정류 다이오드', text: '반주기마다 두 개씩 짝지어 도통하며 전류 방향을 한쪽으로 맞춤' }; });
       roles[src.id] = { title: '교류 입력', text: `${f(num(src.props, 'amplitude'), 'V')} 피크, ${f(fr, 'Hz')}` };
-      if (cap) roles[cap.id] = { title: '평활 커패시터', text: '피크 근처에서 충전, 나머지 구간에 방전하며 맥동을 줄임' };
+      if (cap) { roles[cap.id] = { title: '평활 커패시터', text: '피크 근처에서 충전, 나머지 구간에 방전하며 맥동을 줄임' }; used.add(cap.id); }
       out.push({
         kind: 'bridge', title: '전파 브리지 정류기', elementIds: bridge.map(d => d.id).concat(cap ? [cap.id] : []), outputNode: pos[0],
         text: [
@@ -166,8 +166,8 @@ export function findPatterns(net: Netlist, op: OpResult): Pattern[] {
       const roles: Pattern['roles'] = {
         [d.id]: { title: '정류 다이오드', text: '애노드가 캐소드보다 약 0.7 V 이상 높을 때만 도통 → 한 방향 전류만 통과' },
       };
-      if (cap) roles[cap.id] = { title: '평활 커패시터', text: '피크에서 충전, 다이오드가 꺼진 동안 부하에 전류 공급' };
-      if (load) roles[load.id] = { title: '부하', text: '정류된 전력을 소비하는 쪽' };
+      if (cap) { roles[cap.id] = { title: '평활 커패시터', text: '피크에서 충전, 다이오드가 꺼진 동안 부하에 전류 공급' }; used.add(cap.id); }
+      if (load) { roles[load.id] = { title: '부하', text: '정류된 전력을 소비하는 쪽' }; used.add(load.id); }
       out.push({
         kind: 'halfwave', title: `반파 정류기 — ${d.name}`, elementIds: [d.id, ...(cap ? [cap.id] : []), ...(load ? [load.id] : [])], outputNode: outN,
         text: [
@@ -217,8 +217,11 @@ export function findPatterns(net: Netlist, op: OpResult): Pattern[] {
       const p = diodeParams(d.type, d.props);
       const i = Math.abs(curr(d));
       const vdrop = V(an) - V(ka);
-      const supply = els.find(isVSource);
-      const vs = supply ? Math.abs(V(supply.nodes[0]) - V(supply.nodes[1])) : NaN;
+      if (d.type === 'D' && vdrop < 0.3) break; // 역바이어스 일반 다이오드는 전류 제한 회로가 아님
+      // 저항–다이오드 직렬 가지 전체에 걸린 전압
+      const chainTop = nn === an ? g.other(r, nn) : an;
+      const chainBot = nn === ka ? g.other(r, nn) : ka;
+      const vs = V(chainTop) - V(chainBot);
       out.push({
         kind: 'led', title: `${d.type === 'LED' ? 'LED' : '다이오드'} 전류 제한 회로 — ${d.name} + ${r.name}`, elementIds: [d.id, r.id],
         text: [
@@ -226,7 +229,7 @@ export function findPatterns(net: Netlist, op: OpResult): Pattern[] {
           `시뮬레이션 결과 ${d.name} 양단 전압은 ${f(vdrop, 'V')}, 흐르는 전류는 ${f(i, 'A')}입니다.${d.type === 'LED' ? (i > 0.025 ? ' ⚠️ 일반 LED 정격(약 20 mA)을 넘습니다. 저항을 키우세요.' : i < 0.001 ? ' 전류가 1 mA 미만이라 매우 어둡게 켜집니다.' : ' 일반 LED에 적당한 전류입니다.') : ''}`,
         ],
         formulas: [
-          `I = \\frac{V_S - V_F}{${sym(r.name)}}${isFinite(vs) ? ` = \\frac{${q(vs, 'V')} - ${q(vdrop, 'V')}}{${q(R(r), 'Ω')}} \\approx ${q((vs - vdrop) / R(r), 'A')}` : ''}`,
+          `I = \\frac{V_S - V_F}{${sym(r.name)}} = \\frac{${q(vs, 'V')} - ${q(vdrop, 'V')}}{${q(R(r), 'Ω')}} \\approx ${q((vs - vdrop) / R(r), 'A')}`,
         ],
         roles: {
           [r.id]: { title: '전류 제한 저항', text: `남는 전압 ${f(Math.abs(curr(r)) * R(r), 'V')}를 떠안아 ${d.name}의 전류를 제한` },
@@ -329,10 +332,10 @@ export function findPatterns(net: Netlist, op: OpResult): Pattern[] {
       out.push({
         kind: 'bridge-wheatstone', title: '휘트스톤 브리지', elementIds: [r1.id, r2.id, r3.id, r4.id, ...(mid ? [mid.id] : [])],
         text: [
-          `두 개의 분압기(${r1.name}–${r2.name}, ${r3.name}–${r4.name})가 같은 전원에 병렬로 연결된 구조입니다. 두 분압 노드 사이의 전압 $V_{${g.name(c)}} - V_{${g.name(d)}}$는 두 분압비가 같을 때 0이 되며, 이를 **평형**이라 합니다.`,
+          `두 개의 분압기(${r1.name}–${r2.name}, ${r3.name}–${r4.name})가 같은 전원에 병렬로 연결된 구조입니다. 두 분압 노드 사이의 전압 $V_{\\text{${g.name(c)}}} - V_{\\text{${g.name(d)}}}$는 두 분압비가 같을 때 0이 되며, 이를 **평형**이라 합니다.`,
           Math.abs(bal) < 1e-9 ? '현재 브리지는 평형 상태입니다.' : `현재 두 노드 사이 전압은 ${f(V(c) - V(d), 'V')}로 평형이 아닙니다. 미지 저항 측정·센서(스트레인 게이지 등)에 쓰입니다.`,
         ],
-        formulas: [`\\frac{${sym(r1.name)}}{${sym(r2.name)}} = \\frac{${sym(r3.name)}}{${sym(r4.name)}} \\;\\Leftrightarrow\\; V_{${g.name(c)}} = V_{${g.name(d)}}`],
+        formulas: [`\\frac{${sym(r1.name)}}{${sym(r2.name)}} = \\frac{${sym(r3.name)}}{${sym(r4.name)}} \\;\\Leftrightarrow\\; V_{\\text{${g.name(c)}}} = V_{\\text{${g.name(d)}}}`],
         roles: Object.fromEntries([r1, r2, r3, r4].map(r => [r.id, { title: '브리지 암', text: '분압비를 이루는 저항' }])),
       });
       [r1, r2, r3, r4].forEach(r => used.add(r.id));
@@ -364,7 +367,7 @@ export function findPatterns(net: Netlist, op: OpResult): Pattern[] {
           ? `노드 ${g.name(n)}에는 ${others.map(o => o.e.name).join(', ')}도 연결되어 있어(부하) 실제 전압 ${f(V(n), 'V')}는 무부하 계산값 ${f(ideal, 'V')}와 ${Math.abs(V(n) - ideal) / Math.max(Math.abs(ideal), 1e-12) < 0.01 ? '거의 같습니다' : '다릅니다. 부하가 하단 저항과 병렬로 붙어 분압비가 바뀌기 때문입니다'}.`
           : `계산값 ${f(ideal, 'V')}가 시뮬레이션 결과와 일치합니다.`,
       ],
-      formulas: [`V_{${g.name(n)}} = V_{in}\\frac{${sym(bot.name)}}{${sym(top.name)} + ${sym(bot.name)}} = ${q(vin, 'V')} \\times \\frac{${q(R(bot), 'Ω')}}{${q(R(top), 'Ω')} + ${q(R(bot), 'Ω')}} = ${q(ideal, 'V')}`],
+      formulas: [`V_{\\text{${g.name(n)}}} = V_{in}\\frac{${sym(bot.name)}}{${sym(top.name)} + ${sym(bot.name)}} = ${q(vin, 'V')} \\times \\frac{${q(R(bot), 'Ω')}}{${q(R(top), 'Ω')} + ${q(R(bot), 'Ω')}} = ${q(ideal, 'V')}`],
       roles,
     });
   }

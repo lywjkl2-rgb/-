@@ -26,32 +26,66 @@ function onSeg(px: number, py: number, w: { x1: number; y1: number; x2: number; 
   return px >= Math.min(w.x1, w.x2) && px <= Math.max(w.x1, w.x2) && py >= Math.min(w.y1, w.y2) && py <= Math.max(w.y1, w.y2);
 }
 
-/** 위치 정보가 없을 때: 넷 연결 기반의 간단한 격자 배치 */
-function autoPositions(ac: AbstractCircuit, isGround: (n: string) => boolean) {
+/** 위치 정보가 없을 때: 넷 연결을 스프링으로 본 힘-기반 배치 */
+function autoPositions(ac: AbstractCircuit, isGround: (n?: string) => boolean) {
   const comps = ac.components;
-  // 전원을 맨 왼쪽, 나머지는 넷 BFS 순서대로 열에 배치
-  const order: AbstractComponent[] = [];
-  const srcs = comps.filter(c => ['V', 'VAC', 'VPULSE', 'I'].includes(c.type));
-  const visited = new Set<AbstractComponent>();
-  const queue = [...srcs];
-  if (!queue.length && comps.length) queue.push(comps[0]);
-  while (queue.length || visited.size < comps.length) {
-    if (!queue.length) queue.push(comps.find(c => !visited.has(c))!);
-    const c = queue.shift()!;
-    if (visited.has(c)) continue;
-    visited.add(c); order.push(c);
-    for (const n of c.nets) {
-      if (isGround(n)) continue;
-      for (const o of comps) if (!visited.has(o) && o.nets.includes(n)) queue.push(o);
+  const n = comps.length;
+  if (!n) return;
+  // 같은 (접지가 아닌) 넷을 공유하면 스프링으로 연결
+  const edges: [number, number, number][] = [];
+  const nets = new Map<string, number[]>();
+  comps.forEach((c, i) => c.nets.forEach(nt => { if (!isGround(nt)) nets.set(nt, [...new Set([...(nets.get(nt) ?? []), i])]); }));
+  for (const [, idx] of nets) for (let a = 0; a < idx.length; a++) for (let b = a + 1; b < idx.length; b++) edges.push([idx[a], idx[b], 1 / (idx.length - 1)]);
+  const isSrc = (c: AbstractComponent) => ['V', 'VAC', 'VPULSE', 'I'].includes(c.type);
+  const grounded = comps.map(c => c.nets.some(isGround));
+  // 초기 위치: 원형 (결정적)
+  const pos = comps.map((c, i) => {
+    const a = (2 * Math.PI * i) / n;
+    return { x: Math.cos(a) * 3 + (isSrc(c) ? -3 : 0), y: Math.sin(a) * 3 + (grounded[i] ? 1 : 0) };
+  });
+  const k = 2.2;
+  for (let it = 0; it < 400; it++) {
+    const t = 0.35 * (1 - it / 400) + 0.02;
+    const d = pos.map(() => ({ x: 0, y: 0 }));
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      let dx = pos[i].x - pos[j].x, dy = pos[i].y - pos[j].y;
+      let dist = Math.hypot(dx, dy);
+      if (dist < 1e-3) { dx = 0.01 * (i - j); dy = 0.01; dist = Math.hypot(dx, dy); }
+      const f = (k * k) / dist;
+      d[i].x += (dx / dist) * f; d[i].y += (dy / dist) * f;
+      d[j].x -= (dx / dist) * f; d[j].y -= (dy / dist) * f;
     }
+    for (const [a, b, w] of edges) {
+      const dx = pos[a].x - pos[b].x, dy = pos[a].y - pos[b].y;
+      const dist = Math.hypot(dx, dy) || 1e-3;
+      const f = (dist * dist / k) * w;
+      d[a].x -= (dx / dist) * f; d[a].y -= (dy / dist) * f;
+      d[b].x += (dx / dist) * f; d[b].y += (dy / dist) * f;
+    }
+    comps.forEach((c, i) => {
+      if (isSrc(c)) d[i].x -= 1.5;          // 전원은 왼쪽으로
+      if (grounded[i]) d[i].y += 0.6;        // 접지 소자는 아래로
+      d[i].x -= pos[i].x * 0.25; d[i].y -= pos[i].y * 0.25; // 중심으로 약한 인력 (떨어진 부분 회로가 멀어지지 않게)
+      const m = Math.hypot(d[i].x, d[i].y) || 1;
+      pos[i].x += (d[i].x / m) * Math.min(m, t * 3);
+      pos[i].y += (d[i].y / m) * Math.min(m, t * 3);
+    });
   }
-  const cols = Math.max(3, Math.ceil(Math.sqrt(order.length * 1.6)));
-  order.forEach((c, i) => {
-    const col = i % cols, row = Math.floor(i / cols);
-    c.x = (col + 0.5) / cols;
-    c.y = (row + 0.5) / Math.max(1, Math.ceil(order.length / cols));
-    // 접지에 닿는 2단자 소자는 세로로
-    if (c.orientation === undefined) c.orientation = c.nets.some(isGround) && c.nets.length === 2 ? 'vertical' : 'horizontal';
+  const xs = pos.map(p => p.x), ys = pos.map(p => p.y);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  comps.forEach((c, i) => {
+    c.x = 0.08 + 0.84 * ((pos[i].x - x0) / (x1 - x0 || 1));
+    c.y = 0.1 + 0.8 * ((pos[i].y - y0) / (y1 - y0 || 1));
+  });
+  // 방향: 접지에 닿는 2단자는 세로, 그 밖에는 양쪽 이웃이 놓인 방향을 따름
+  comps.forEach((c, i) => {
+    if (c.orientation !== undefined || c.nets.length !== 2) return;
+    if (grounded[i]) { c.orientation = 'vertical'; return; }
+    const cen = c.nets.map(nt => {
+      const o = (nets.get(nt) ?? []).filter(j => j !== i);
+      return o.length ? { x: o.reduce((s, j) => s + comps[j].x!, 0) / o.length, y: o.reduce((s, j) => s + comps[j].y!, 0) / o.length } : { x: c.x!, y: c.y! };
+    });
+    c.orientation = Math.abs(cen[0].x - cen[1].x) * 1.33 >= Math.abs(cen[0].y - cen[1].y) ? 'horizontal' : 'vertical';
   });
 }
 
@@ -199,7 +233,7 @@ export function layoutCircuit(ac: AbstractCircuit, opts: { width?: number } = {}
     if (!ok) { netWires.delete(net); labelNets.push(net); }
   }
   for (const ws of netWires.values()) wires.push(...ws);
-  for (const net of labelNets) addLabels(components, netPins.get(net)!, net);
+  for (const net of labelNets) addLabels(components, netPins.get(net)!, net, wires);
 
   // 6) 검증: 원래 넷 구조와 같은지 확인하고 틀린 넷은 라벨로 대체
   for (let iter = 0; iter < 5; iter++) {
@@ -211,15 +245,28 @@ export function layoutCircuit(ac: AbstractCircuit, opts: { width?: number } = {}
       for (const w of ws) { const i = wires.indexOf(w); if (i >= 0) wires.splice(i, 1); }
       netWires.delete(net);
       labelNets.push(net);
-      addLabels(components, netPins.get(net) ?? [], net);
+      addLabels(components, netPins.get(net) ?? [], net, wires);
     }
   }
   return { sch: { components, wires }, labelNets };
 }
 
-function addLabels(components: Component[], pins: { x: number; y: number }[], net: string) {
-  const name = net.replace(/^N(?=\d)/, 'N');
-  for (const p of pins) components.push({ id: newId(), type: 'LABEL', name: 'LBL', x: p.x, y: p.y, rot: 3, props: { net: name } });
+function addLabels(components: Component[], pins: { x: number; y: number }[], net: string, wires?: Wire[]) {
+  for (const p of pins) {
+    // 핀이 소자 중심의 어느 쪽에 있는지 보고 라벨이 바깥을 향하게
+    const owner = components.find(c => c.type !== 'LABEL' && c.type !== 'GND' && pinPositions(c).some(q => q.x === p.x && q.y === p.y));
+    const dx = owner ? p.x - owner.x : 1, dy = owner ? p.y - owner.y : 0;
+    const sy0 = p.y + Math.sign(dy);
+    const occupied = wires && (wires.some(w => onSeg(p.x, sy0, w)) || components.some(c => pinPositions(c).some(q => q.x === p.x && q.y === sy0)));
+    if (Math.abs(dy) > Math.abs(dx) && wires && !occupied) {
+      // 위/아래 핀: 짧은 배선을 뺀 뒤 가로 라벨
+      const sy = p.y + Math.sign(dy);
+      wires.push({ id: newId('w'), x1: p.x, y1: p.y, x2: p.x, y2: sy });
+      components.push({ id: newId(), type: 'LABEL', name: 'LBL', x: p.x, y: sy, rot: 0, props: { net } });
+    } else {
+      components.push({ id: newId(), type: 'LABEL', name: 'LBL', x: p.x, y: p.y, rot: dx < 0 ? 2 : 0, props: { net } });
+    }
+  }
 }
 
 function spread(pts: { x: number; y: number }[]) {

@@ -116,9 +116,13 @@ export function buildNetlist(sch: Schematic): Netlist {
   // 라벨 이름이 있는 넷은 그 이름을 노드 이름으로
   const rootLabel = new Map<string, string>();
   for (const [net, k] of labelRoots) rootLabel.set(dsu.find(k), net);
+  let unnamed = 0;
+  const labelNames = new Set(rootLabel.values());
   for (const r of roots) {
     rootToNode.set(r.root, nodeNames.length);
-    nodeNames.push(rootLabel.get(r.root) ?? `N${nodeNames.length}`);
+    let nm = rootLabel.get(r.root);
+    if (!nm) { do { nm = `N${++unnamed}`; } while (labelNames.has(nm)); }
+    nodeNames.push(nm);
     nodePoints.push([]);
   }
   for (const [k, p] of allPoints) {

@@ -102,7 +102,7 @@ export class CircuitEditor {
     for (const w of wires) { add(w.x1 * G, w.y1 * G); add(w.x2 * G, w.y2 * G); }
     const r = this.svg.getBoundingClientRect();
     const pad = 60;
-    this.zoom = Math.min(2, Math.max(0.3, Math.min((r.width - pad * 2) / (x1 - x0 || 1), (r.height - pad * 2) / (y1 - y0 || 1))));
+    this.zoom = Math.min(1.6, Math.max(0.3, Math.min((r.width - pad * 2) / (x1 - x0 || 1), (r.height - pad * 2) / (y1 - y0 || 1))));
     this.panX = r.width / 2 - ((x0 + x1) / 2) * this.zoom;
     this.panY = r.height / 2 - ((y0 + y1) / 2) * this.zoom;
     this.applyView();

@@ -39,6 +39,8 @@ export interface Report {
 }
 
 const f = formatSI;
+/** 음수 0(-0.0) 없이 고정 소수점 표기 */
+const fx = (v: number, d: number) => { const s = v.toFixed(d); return /^-0\.?0*$/.test(s) ? s.slice(1) : s; };
 
 export function explain(a: Analysis): Report {
   const { net, op } = a;
@@ -464,12 +466,12 @@ function freqSection(a: Analysis, outputNode?: number): Section | undefined {
     text: `${input.name}를 크기 1, 위상 0°인 사인파 입력으로 두고 주파수를 ${f(ac.freqs[0], 'Hz')}부터 ${f(ac.freqs[ac.freqs.length - 1], 'Hz')}까지 바꾸며 출력 노드 **${net.nodeNames[out]}**의 크기와 위상을 계산했습니다(소신호 AC 해석). 커패시터는 임피던스 $Z_C = 1/(j\\omega C)$, 인덕터는 $Z_L = j\\omega L$로 바뀝니다.`,
   });
   blocks.push({ kind: 'math', tex: `H(j\\omega) = \\frac{V_{${net.nodeNames[out]}}(j\\omega)}{V_{${input.name}}(j\\omega)}` });
-  blocks.push({ kind: 'p', text: `응답 형태: **${shape}**. 최대 이득 ${maxDb.toFixed(1)} dB (${f(ac.freqs[iMax], 'Hz')}), 저주파 ${lowDb.toFixed(1)} dB, 고주파 ${highDb.toFixed(1)} dB.` });
+  blocks.push({ kind: 'p', text: `응답 형태: **${shape}**. 최대 이득 ${fx(maxDb, 1)} dB (${f(ac.freqs[iMax], 'Hz')}), 저주파 ${fx(lowDb, 1)} dB, 고주파 ${fx(highDb, 1)} dB.` });
   if (crossings.length) {
     blocks.push({ kind: 'p', text: `−3 dB 주파수(출력이 최대의 $1/\\sqrt2 \\approx 70.7\\%$가 되는 지점): ${crossings.map(c => f(c, 'Hz')).join(', ')}` });
   }
   const ph0 = carg(ac.v[0][out]) * 180 / Math.PI, ph1 = carg(ac.v[ac.v.length - 1][out]) * 180 / Math.PI;
-  blocks.push({ kind: 'p', text: `위상은 저주파에서 ${ph0.toFixed(0)}°, 고주파에서 ${ph1.toFixed(0)}°입니다.` });
+  blocks.push({ kind: 'p', text: `위상은 저주파에서 ${fx(ph0, 0)}°, 고주파에서 ${fx(ph1, 0)}°입니다.` });
   return { id: 'freq', title: '7. 주파수 응답 (AC 해석)', blocks };
 }
 
