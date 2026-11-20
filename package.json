@@ -1,0 +1,31 @@
+{
+  "name": "circuit-tutor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "회로를 설계하거나 교재 이미지/PDF에서 인식해, 동작 원리와 각 소자의 역할을 단계별로 분석해 주는 학습용 회로 시뮬레이터",
+  "scripts": {
+    "dev": "concurrently -k -n web,api \"vite\" \"tsx watch server/index.ts\"",
+    "dev:web": "vite",
+    "server": "tsx server/index.ts",
+    "build": "tsc --noEmit && vite build",
+    "start": "NODE_ENV=production tsx server/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.11.0",
+    "katex": "^0.19.1",
+    "pdfjs-dist": "^6.5.438",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/katex": "^0.16.8",
+    "@types/node": "^26.6.6",
+    "concurrently": "^10.0.7",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
+  }
+}
