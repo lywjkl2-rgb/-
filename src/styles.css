@@ -80,9 +80,10 @@ code { background: var(--bg-soft); padding: 0 4px; border-radius: 4px; font-size
 .lvl-응용 { background: #fae8ff; color: #86198f; }
 
 /* ---------- 레이아웃 */
-.layout { display: grid; grid-template-columns: 236px 1fr minmax(380px, 34%); grid-template-rows: minmax(0, 1fr); height: calc(100vh - 52px); }
+.layout { display: grid; grid-template-columns: 236px 1fr minmax(380px, 34%); grid-template-rows: minmax(0, 1fr); height: calc(100vh - 52px); height: calc(100dvh - 52px); }
+/* 모바일 브라우저는 100vh 에 주소창 영역이 포함되어 아래가 잘리므로 dvh(실제 보이는 높이)를 우선 사용 */
 .layout > * { min-height: 0; }
-.left { border-right: 1px solid var(--line); background: var(--bg-panel); overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+.left { border-right: 1px solid var(--line); background: var(--bg-panel); overflow-y: auto; padding: 10px 10px 28px; display: flex; flex-direction: column; gap: 10px; }
 .right { border-left: 1px solid var(--line); background: var(--bg-panel); display: flex; flex-direction: column; min-width: 0; }
 .center { position: relative; overflow: hidden; background: var(--bg); }
 
@@ -101,6 +102,11 @@ code { background: var(--bg-soft); padding: 0 4px; border-radius: 4px; font-size
 
 .props-card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .props-title { font-weight: 700; }
+.props-head { display: flex; align-items: center; justify-content: space-between; margin: -4px -4px 0 0; }
+/* 속성 창: 회로도 위에 떠 있어 부품 목록을 스크롤하지 않아도 보임 */
+.props { position: absolute; top: 10px; right: 56px; z-index: 6; width: 250px; max-width: calc(100% - 80px); max-height: calc(100% - 90px); overflow-y: auto; border-radius: var(--radius); box-shadow: var(--shadow); }
+.props:empty { display: none; }
+.props .props-card { padding-bottom: 12px; }
 .field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
 .field > span { color: var(--fg-muted); }
 .field i { font-style: normal; opacity: .8; }
