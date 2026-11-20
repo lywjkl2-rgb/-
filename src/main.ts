@@ -52,7 +52,6 @@ app.innerHTML = `
       <button class="tool" data-tool="wire" title="배선 (W) — 클릭으로 꺾고, 핀이나 배선에 닿으면 끝. Space: 꺾는 방향 전환">╱ 배선</button>
     </div>
     <div class="palette"></div>
-    <div class="props"></div>
     <details class="help"><summary>조작법</summary>
       <ul>
         <li>부품을 고른 뒤 캔버스를 클릭해 배치 (연속 배치, <kbd>Esc</kbd>/우클릭으로 종료)</li>
@@ -69,6 +68,7 @@ app.innerHTML = `
     <div class="banner hidden"></div>
     <div class="canvas-host"></div>
     <div class="ref-image hidden"><div class="ref-head"><b>원본 그림</b><input type="range" min="20" max="100" value="100" class="ref-opacity" title="투명도"><button class="icon-btn ref-close">✕</button></div><img alt="원본 회로도"/></div>
+    <div class="props"></div>
     <div class="canvas-tools">
       <button class="icon-btn" data-act="zoom-in" title="확대">＋</button>
       <button class="icon-btn" data-act="zoom-out" title="축소">－</button>
@@ -180,13 +180,13 @@ function renderProps() {
   const comps = ids.map(id => store.comp(id)).filter(Boolean) as Component[];
   if (!ids.length) { box.innerHTML = ''; return; }
   if (comps.length !== 1) {
-    box.innerHTML = `<div class="props-card"><div class="props-title">${ids.length}개 선택됨</div><div class="row"><button class="btn small" data-pa="rot">회전</button><button class="btn small danger" data-pa="del">삭제</button></div></div>`;
+    box.innerHTML = `<div class="props-card"><div class="props-head"><span class="props-title">${ids.length}개 선택됨</span><button class="icon-btn" data-pa="close" title="선택 해제">✕</button></div><div class="row"><button class="btn small" data-pa="rot">회전</button><button class="btn small danger" data-pa="del">삭제</button></div></div>`;
   } else {
     const c = comps[0];
     const d = COMPONENTS[c.type];
     const role = report?.roles.find(r => r.id === c.id);
     box.innerHTML = `<div class="props-card">
-      <div class="props-title">${d.label}</div>
+      <div class="props-head"><span class="props-title">${d.label}</span><button class="icon-btn" data-pa="close" title="선택 해제">✕</button></div>
       ${c.type === 'GND' ? '' : `<label class="field"><span>이름</span><input data-name value="${escapeHtml(c.name)}"></label>`}
       ${d.schema.map(s => propInput(c, s)).join('')}
       <div class="row"><button class="btn small" data-pa="rot">↻ 회전</button><button class="btn small" data-pa="flip">⇅ 뒤집기</button><button class="btn small danger" data-pa="del">삭제</button></div>
@@ -220,6 +220,7 @@ function renderProps() {
     if (b.dataset.pa === 'rot') editor.rotateSelection();
     if (b.dataset.pa === 'flip') editor.flipSelection();
     if (b.dataset.pa === 'del') store.deleteSelection();
+    if (b.dataset.pa === 'close') { store.selection.clear(); editor.render(); renderProps(); }
   }));
 }
 
