@@ -1,0 +1,87 @@
+// 회로 구조(토폴로지) 분석: 직렬/병렬 묶음, 테브난 저항, 대표 회로 패턴 인식
+
+import type { Netlist, SimElement } from '../engine/netlist';
+import { Simulator, type OpResult } from '../engine/simulator';
+import { diodeIV, diodeParams } from '../engine/models';
+
+export const TWO_TERMINAL = new Set(['R', 'C', 'L', 'V', 'VAC', 'VPULSE', 'I', 'D', 'LED', 'ZD', 'SW', 'AM']);
+export const isSource = (e: SimElement) => ['V', 'VAC', 'VPULSE', 'I'].includes(e.type);
+export const isVSource = (e: SimElement) => ['V', 'VAC', 'VPULSE'].includes(e.type);
+export const isDiode = (e: SimElement) => ['D', 'LED', 'ZD'].includes(e.type);
+
+export class Graph {
+  readonly net: Netlist;
+  readonly incident: { e: SimElement; pin: number }[][];
+  constructor(net: Netlist) {
+    this.net = net;
+    this.incident = Array.from({ length: net.nodeCount }, () => []);
+    for (const e of net.elements) {
+      if (e.type === 'VM') continue;
+      e.nodes.forEach((n, pin) => this.incident[n].push({ e, pin }));
+    }
+  }
+  degree(n: number) { return this.incident[n].length; }
+  other(e: SimElement, n: number): number { return e.nodes[0] === n ? e.nodes[1] : e.nodes[0]; }
+  at(n: number, pred?: (e: SimElement) => boolean) { return this.incident[n].filter(x => !pred || pred(x.e)); }
+  between(a: number, b: number) {
+    return this.net.elements.filter(e => TWO_TERMINAL.has(e.type) && ((e.nodes[0] === a && e.nodes[1] === b) || (e.nodes[0] === b && e.nodes[1] === a)));
+  }
+  /** 이상적 전압원으로 직접 구동되는 노드인가 (다른 단자가 접지) */
+  drivenBy(n: number): SimElement | undefined {
+    return this.net.elements.find(e => isVSource(e) && ((e.nodes[0] === n && e.nodes[1] === 0) || (e.nodes[1] === n && e.nodes[0] === 0)));
+  }
+  name(n: number) { return this.net.nodeNames[n]; }
+}
+
+/**
+ * 두 노드 사이에서 바라본 테브난 저항 (독립 전원 제거, 비선형 소자는 동작점에서 선형화).
+ * exclude 로 지정한 소자는 떼어내고 계산한다. BJT/연산증폭기가 있으면 undefined.
+ */
+export function theveninResistance(net: Netlist, op: OpResult, a: number, b: number, exclude: Set<string>): number | undefined {
+  if (net.elements.some(e => ['NPN', 'PNP', 'OPAMP'].includes(e.type))) return undefined;
+  if (!op.ok) return undefined;
+  const elements: SimElement[] = [];
+  for (const e of net.elements) {
+    if (exclude.has(e.id)) continue;
+    const base = { id: e.id, name: e.name, nodes: e.nodes };
+    switch (e.type) {
+      case 'V': case 'VAC': case 'VPULSE': case 'AM': elements.push({ ...base, type: 'V', props: { voltage: 0 } }); break;
+      case 'I': break; // 전류원 → 개방
+      case 'C': break; // 다른 커패시터는 개방 (직류 관점)
+      case 'L': elements.push({ ...base, type: 'R', props: { resistance: 1e-6 } }); break;
+      case 'D': case 'LED': case 'ZD': {
+        const vd = op.v[e.nodes[0]] - op.v[e.nodes[1]];
+        const g = diodeIV(vd, diodeParams(e.type, e.props)).g;
+        elements.push({ ...base, type: 'R', props: { resistance: 1 / Math.max(g, 1e-12) } });
+        break;
+      }
+      case 'VM': break;
+      default: elements.push(e);
+    }
+  }
+  elements.push({ id: '__test', name: 'Itest', type: 'I', nodes: [b, a], props: { current: 1 } });
+  const sub: Netlist = { ...net, elements };
+  const r = new Simulator(sub).dcOperatingPoint();
+  if (!r.ok) return undefined;
+  const R = r.v[a] - r.v[b];
+  return R > 1e11 ? Infinity : R;
+}
+
+// ------------------------------------------------------------------ 패턴
+
+export interface Pattern {
+  kind: string;
+  title: string;
+  elementIds: string[];
+  /** 해설 블록용 문단 (인라인 수식 $...$ 허용) */
+  text: string[];
+  /** 대표 수식 (display) */
+  formulas: string[];
+  /** 소자별 역할 */
+  roles: Record<string, { title: string; text: string }>;
+  outputNode?: number;
+  /** 과도·주파수 해설에 쓰는 특성값 */
+  tau?: number;
+  fc?: number;
+  f0?: number;
+}
