@@ -271,14 +271,38 @@ export class CircuitEditor {
     return wires.some(w => between(x, y, w));
   }
 
-  private pinAt(ev: MouseEvent) {
+  private pinAt(ev: MouseEvent | PointerEvent) {
     const w = this.toWorld(ev);
+    // 손가락은 마우스보다 덜 정확하므로 판정 반경을 넓힌다 (화면 픽셀 기준)
+    const touch = 'pointerType' in ev && ev.pointerType !== 'mouse';
+    const r = (touch ? 16 : 8) / this.zoom;
+    let best: { x: number; y: number } | null = null, bd = Infinity;
     for (const c of this.store.sch.components) {
       for (const p of pinPositions(c)) {
-        if (Math.hypot(p.x * G - w.x, p.y * G - w.y) < 7 / Math.min(this.zoom, 1.5) + 2) return p;
+        const d = Math.hypot(p.x * G - w.x, p.y * G - w.y);
+        if (d < r && d < bd) { bd = d; best = p; }
       }
     }
-    return null;
+    return best;
+  }
+
+  // 터치/펜/마우스 공통 포인터 상태
+  private pointers = new Map<number, { x: number; y: number }>();
+  private pinch: null | { d0: number; zoom0: number; mx: number; my: number; px: number; py: number } = null;
+  private pinDrag: null | { id: number; x: number; y: number } = null;
+  private lastTap = { id: '', t: 0 };
+
+  private startPinch() {
+    const [a, b] = [...this.pointers.values()];
+    const r = this.svg.getBoundingClientRect();
+    this.pinch = {
+      d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, zoom0: this.zoom,
+      mx: (a.x + b.x) / 2 - r.left, my: (a.y + b.y) / 2 - r.top, px: this.panX, py: this.panY,
+    };
+    // 한 손가락으로 시작한 동작은 취소
+    if (this.drag?.kind === 'move' && this.drag.moved) this.store.commit();
+    this.drag = null;
+    if (this.pinDrag) { this.pinDrag = null; this.wireStart = null; this.setTool({ kind: 'select' }); }
   }
 
   private bindEvents() {
@@ -291,10 +315,15 @@ export class CircuitEditor {
 
     svg.addEventListener('contextmenu', ev => { ev.preventDefault(); this.setTool({ kind: 'select' }); });
 
-    svg.addEventListener('mousedown', ev => {
+    svg.addEventListener('pointerdown', ev => {
+      const touch = ev.pointerType !== 'mouse';
+      this.pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      if (this.pointers.size === 2) { this.startPinch(); return; }
+      if (this.pointers.size > 2) return;
       const target = ev.target as Element;
       const g = this.toGrid(ev);
-      if (ev.button === 1 || (ev.button === 0 && ev.altKey)) {
+      this.mouse = g;
+      if (ev.pointerType === 'mouse' && (ev.button === 1 || (ev.button === 0 && ev.altKey))) {
         this.drag = { kind: 'pan', sx: ev.clientX, sy: ev.clientY, px: this.panX, py: this.panY };
         return;
       }
@@ -305,7 +334,7 @@ export class CircuitEditor {
         this.store.selection = new Set([c.id]);
         this.store.commit();
         this.onSelect?.([c.id]);
-        return; // 같은 소자를 계속 배치할 수 있음 (Esc/우클릭으로 종료)
+        return; // 같은 소자를 계속 배치할 수 있음 (Esc/우클릭/선택 도구로 종료)
       }
       if (this.tool.kind === 'wire') {
         if (!this.wireStart) { this.wireStart = g; this.renderGhost(); return; }
@@ -316,9 +345,10 @@ export class CircuitEditor {
       const pin = this.pinAt(ev);
       const compEl = target.closest('[data-comp]') as SVGElement | null;
       if (pin) {
-        // 핀에서 드래그 → 배선 시작
+        // 핀을 누른 채 끌면 배선, 탭(클릭)만 하면 다음 탭 위치까지 배선
         this.setTool({ kind: 'wire' });
         this.wireStart = { x: pin.x, y: pin.y };
+        this.pinDrag = { id: ev.pointerId, x: pin.x, y: pin.y };
         this.renderGhost();
         return;
       }
@@ -326,11 +356,19 @@ export class CircuitEditor {
         const id = compEl.dataset.comp!;
         if (ev.shiftKey) { this.store.selection.has(id) ? this.store.selection.delete(id) : this.store.selection.add(id); }
         else if (!this.store.selection.has(id)) this.store.selection = new Set([id]);
+        // 터치: 두 번 탭하면 스위치 전환
+        if (touch) {
+          const now = performance.now();
+          if (this.lastTap.id === id && now - this.lastTap.t < 400 && this.store.comp(id)?.type === 'SW') this.onToggleSwitch?.(id);
+          this.lastTap = { id, t: now };
+          this.onHover?.(id, ev);
+        }
         this.startMove(ev);
         this.render();
         this.onSelect?.([...this.store.selection]);
         return;
       }
+      if (touch) this.onHover?.(null, ev);
       const wireEl = target.closest('[data-wire]') as SVGElement | null;
       if (wireEl) {
         const id = wireEl.dataset.wire!;
@@ -353,7 +391,22 @@ export class CircuitEditor {
       }
     });
 
-    window.addEventListener('mousemove', ev => {
+    window.addEventListener('pointermove', ev => {
+      if (this.pointers.has(ev.pointerId)) this.pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      if (this.pinch && this.pointers.size >= 2) {
+        const [a, b] = [...this.pointers.values()];
+        const r = svg.getBoundingClientRect();
+        const p = this.pinch;
+        const nz = Math.min(4, Math.max(0.25, p.zoom0 * (Math.hypot(a.x - b.x, a.y - b.y) / p.d0)));
+        const mx = (a.x + b.x) / 2 - r.left, my = (a.y + b.y) / 2 - r.top;
+        // 처음 두 손가락 중심의 월드 좌표가 현재 중심을 따라가도록
+        const wx = (p.mx - p.px) / p.zoom0, wy = (p.my - p.py) / p.zoom0;
+        this.zoom = nz;
+        this.panX = mx - wx * nz;
+        this.panY = my - wy * nz;
+        this.applyView();
+        return;
+      }
       const g = this.toGrid(ev);
       const changed = g.x !== this.mouse.x || g.y !== this.mouse.y;
       this.mouse = g;
@@ -383,16 +436,29 @@ export class CircuitEditor {
         return;
       }
       if (changed) this.renderGhost();
-      if (svg.contains(ev.target as Node)) {
+      if (ev.pointerType === 'mouse' && svg.contains(ev.target as Node)) {
         const compEl = (ev.target as Element).closest('[data-comp]') as SVGElement | null;
         this.onHover?.(compEl?.dataset.comp ?? null, ev);
       }
     });
 
-    window.addEventListener('mouseup', () => {
+    const end = (ev: PointerEvent) => {
+      const wasPinch = !!this.pinch;
+      this.pointers.delete(ev.pointerId);
+      if (this.pointers.size < 2) this.pinch = null;
+      if (wasPinch) { this.drag = null; return; }
+      // 핀에서 끌어 놓은 경우: 놓은 위치까지 배선
+      if (this.pinDrag && this.pinDrag.id === ev.pointerId) {
+        const g = this.toGrid(ev);
+        const moved = g.x !== this.pinDrag.x || g.y !== this.pinDrag.y;
+        this.pinDrag = null;
+        if (moved && ev.type === 'pointerup') this.commitWire(g);
+      }
       if (this.drag?.kind === 'move' && this.drag.moved) this.store.commit();
       this.drag = null;
-    });
+    };
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
 
     window.addEventListener('keydown', ev => {
       const tgt = ev.target as HTMLElement;

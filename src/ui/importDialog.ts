@@ -108,7 +108,7 @@ R2 out 0 1k
     const ai = this.aiAvailable();
     this.$('.ai-status').innerHTML = ai === false
       ? '⚠️ 서버에 Claude API 자격 증명이 설정되지 않아 이미지 인식이 동작하지 않을 수 있습니다. <code>ANTHROPIC_API_KEY</code>를 설정한 뒤 서버를 다시 시작하세요. (SPICE 넷리스트 가져오기는 항상 사용할 수 있습니다.)'
-      : ai === null ? '⚠️ API 서버에 연결되지 않았습니다. <code>npm run dev</code>로 실행했는지 확인하세요.' : 'Claude가 회로도를 읽어 넷리스트로 바꾼 뒤, 편집 가능한 회로도로 자동 배치합니다. 결과는 원본과 꼭 비교해 확인하세요.';
+      : ai === null ? '⚠️ AI 서버에 연결되지 않아 이미지 인식을 쓸 수 없습니다. 웹 배포판에는 서버가 없습니다(내 컴퓨터에서 <code>npm run dev</code> + API 키로 실행하면 사용 가능). 대신 <b>SPICE 넷리스트</b> 탭이나 직접 그리기를 이용하세요.' : 'Claude가 회로도를 읽어 넷리스트로 바꾼 뒤, 편집 가능한 회로도로 자동 배치합니다. 결과는 원본과 꼭 비교해 확인하세요.';
   }
 
   private bind() {
@@ -254,7 +254,7 @@ R2 out 0 1k
     go.disabled = true;
     this.setMsg('<span class="spinner"></span> Claude가 회로도를 읽는 중… (보통 20초~1분)');
     try {
-      const res = await fetch('/api/recognize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: data, mediaType: 'image/png', hint: hint || undefined }) });
+      const res = await fetch('api/recognize', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: data, mediaType: 'image/png', hint: hint || undefined }) });
       const body = await res.json().catch(() => ({ error: `서버 오류 (${res.status})` }));
       if (!res.ok) throw new Error(body.error ?? `서버 오류 (${res.status})`);
       const rec = body as RecognizedCircuit;

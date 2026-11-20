@@ -59,6 +59,15 @@ npm start            # http://localhost:8787 에서 화면과 API를 함께 제�
 
 환경 변수: `PORT`(기본 8787), `CLAUDE_MODEL`(기본 `claude-opus-5-5`).
 
+### 웹 배포 (GitHub Pages) — 태블릿·휴대폰에서 바로 쓰기
+
+`main` 브랜치에 푸시(또는 PR 병합)하면 `.github/workflows/deploy-pages.yml`이 테스트 → 빌드 → GitHub Pages 배포를 자동으로 합니다.
+처음 한 번만 저장소 **Settings → Pages → Source**를 **GitHub Actions**로 바꿔 두세요.
+배포 주소는 `https://<사용자명>.github.io/<저장소명>/`이고, Actions 탭의 실행 결과에서도 확인할 수 있습니다.
+
+웹 배포판에는 서버가 없으므로 이미지 인식과 AI 튜터는 꺼지고, 나머지 기능(설계·시뮬레이션·해설·SPICE 가져오기)은 모두 동작합니다.
+터치 조작을 지원합니다: 탭으로 배치·선택, 끌어서 이동·배선, 두 손가락으로 확대/축소, 스위치는 두 번 탭.
+
 테스트: `npm test` (시뮬레이터 정확도, 패턴 인식, 예제 회로, SPICE·인식 결과 변환·자동 배치 검증)
 
 ## 사용법

@@ -58,8 +58,9 @@ app.innerHTML = `
         <li>부품을 고른 뒤 캔버스를 클릭해 배치 (연속 배치, <kbd>Esc</kbd>/우클릭으로 종료)</li>
         <li><kbd>R</kbd> 회전 · <kbd>F</kbd> 뒤집기 · <kbd>Del</kbd> 삭제 · <kbd>Ctrl</kbd>+<kbd>D</kbd> 복제</li>
         <li>핀에서 드래그를 시작하면 배선 모드, 핀·배선에 닿으면 연결</li>
-        <li>빈 곳 드래그: 화면 이동 · 휠: 확대/축소</li>
-        <li>스위치를 더블클릭하면 열림/닫힘 전환</li>
+        <li>빈 곳 드래그: 화면 이동 · 휠 또는 두 손가락 벌리기: 확대/축소</li>
+        <li>스위치를 더블클릭(두 번 탭)하면 열림/닫힘 전환</li>
+        <li>태블릿: 부품을 탭하면 값과 역할이 표시되고, 왼쪽 속성 칸의 회전·삭제 버튼을 쓰면 됩니다</li>
         <li>부품 단축키: <kbd>1</kbd> 저항 <kbd>2</kbd> 커패시터 <kbd>3</kbd> 인덕터 <kbd>4</kbd> 전압원 <kbd>5</kbd> 전류원 <kbd>6</kbd> 다이오드 <kbd>7</kbd> NPN <kbd>8</kbd> 연산증폭기 <kbd>9</kbd> 스위치 <kbd>0</kbd> 접지, <kbd>W</kbd> 배선</li>
       </ul>
     </details>
@@ -134,7 +135,10 @@ let currentExample: string | null = null;
 let tutorHistory: { role: 'user' | 'assistant'; content: string }[] = [];
 let refImage: string | null = null;
 
-fetch('/api/status').then(r => r.json()).then(s => { aiAvailable = !!s.ai; }).catch(() => { aiAvailable = null; });
+// 웹 배포판(GitHub Pages 등)은 서버가 없으므로 AI 기능을 끈다
+const STATIC_BUILD = import.meta.env.VITE_STATIC === '1';
+if (STATIC_BUILD) aiAvailable = null;
+else fetch('api/status').then(r => r.json()).then(s => { aiAvailable = !!s.ai; }).catch(() => { aiAvailable = null; });
 
 const importDialog = new ImportDialog(onImport, () => aiAvailable);
 
@@ -157,8 +161,8 @@ function renderPalette() {
 editor.onToolChange = t => {
   $$('[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === t.kind));
   $$('.part').forEach(b => b.classList.toggle('active', t.kind === 'place' && b.dataset.part === t.type));
-  $('.status-line').textContent = t.kind === 'place' ? `${COMPONENTS[t.type].label} 배치 중 — 클릭해서 놓기, R 회전, F 뒤집기, Esc 종료`
-    : t.kind === 'wire' ? '배선 중 — 클릭해서 꺾기, 핀/배선에 닿으면 연결, Space 꺾는 방향, Esc 종료' : '';
+  $('.status-line').textContent = t.kind === 'place' ? `${COMPONENTS[t.type].label} 배치 중 — 클릭(탭)해서 놓기 · R 회전 · F 뒤집기 · Esc 또는 '선택' 버튼으로 종료`
+    : t.kind === 'wire' ? '배선 중 — 클릭(탭)해서 꺾기 · 핀/배선에 닿으면 연결 · Space 꺾는 방향 · Esc 또는 \'선택\' 버튼으로 종료' : '';
 };
 
 // ------------------------------------------------------------------ 속성 패널
@@ -523,7 +527,7 @@ const CHIPS = ['이 회로가 동작하는 순서를 처음부터 차근차근 �
 function renderTutor() {
   const chat = $('.chat');
   if (!tutorHistory.length) {
-    chat.innerHTML = `<div class="chat-empty"><p><b>AI 튜터</b>는 지금 화면의 회로와 시뮬레이션 결과를 보고 질문에 답합니다.</p>${aiAvailable === false ? '<p class="note note-warn">서버에 Claude API 자격 증명이 없어 사용할 수 없습니다. README의 설정 방법을 참고하세요.</p>' : ''}</div>`;
+    chat.innerHTML = `<div class="chat-empty"><p><b>AI 튜터</b>는 지금 화면의 회로와 시뮬레이션 결과를 보고 질문에 답합니다.</p>${aiAvailable === false ? '<p class="note note-warn">서버에 Claude API 자격 증명이 없어 사용할 수 없습니다. README의 설정 방법을 참고하세요.</p>' : aiAvailable === null ? '<p class="note note-warn">AI 서버에 연결되지 않아 사용할 수 없습니다. 웹 배포판에는 서버가 없으며, 내 컴퓨터에서 <code>npm run dev</code>로 실행하고 API 키를 설정하면 사용할 수 있습니다. 회로 해설·소자 역할 탭은 그대로 이용하세요.</p>' : ''}</div>`;
   } else {
     chat.innerHTML = tutorHistory.map(m => `<div class="msg msg-${m.role}">${m.role === 'user' ? escapeHtml(m.content) : markdown(m.content) || '<span class="spinner"></span>'}</div>`).join('');
   }
@@ -535,13 +539,14 @@ function renderTutor() {
 let asking = false;
 async function ask(q: string) {
   if (asking || !q.trim()) return;
+  if (STATIC_BUILD) { tutorHistory.push({ role: 'user', content: q }, { role: 'assistant', content: '이 웹 배포판에는 AI 서버가 없어 답할 수 없습니다. 해설·소자 역할 탭을 참고하세요.' }); renderTutor(); return; }
   if (!analysis) { tutorHistory.push({ role: 'user', content: q }, { role: 'assistant', content: '먼저 회로를 그리거나 예제를 불러와 주세요.' }); renderTutor(); return; }
   asking = true;
   tutorHistory.push({ role: 'user', content: q }, { role: 'assistant', content: '' });
   renderTutor();
   const msg = tutorHistory[tutorHistory.length - 1];
   try {
-    const res = await fetch('/api/tutor', {
+    const res = await fetch('api/tutor', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ context: buildContext(), messages: tutorHistory.slice(0, -1).slice(-20) }),
     });
